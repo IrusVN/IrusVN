@@ -8,6 +8,21 @@
     "tags": ["Nuxt.js", "Vue.js", "TypeScript"]
   },
   {
+    "name": "Irus Portfolio",
+    "repo": "IrusVN/Irus-Portfolio-Pages",
+    "logo_dark": "icon_white.png",
+    "logo_light": "icon_black.png",
+    "description": "Personal portfolio website showcasing projects and skills",
+    "tags": ["Portfolio", "Web Design", "React"],
+    "languages": {
+      "JavaScript": 50000,
+      "CSS": 30000,
+      "HTML": 20000
+    },
+    "stars": 0,
+    "pushed_at": "2024-08-04T12:00:00Z"
+  },
+  {
     "name": "BTLonWeb",
     "repo": "IrusVN/BTLonWeb",
     "logo_dark": "icon_white.png",
