@@ -2,24 +2,32 @@
   {
     "name": "IrusGear Frontend",
     "repo": "IrusVN/irusgear-frontend",
+    "logo_dark": "icon_white.png",
+    "logo_light": "icon_black.png",
     "description": "Gaming gear e-commerce platform built with Nuxt.js and modern web technologies",
     "tags": ["Nuxt.js", "Vue.js", "TypeScript"]
   },
   {
     "name": "Irus Portfolio",
     "repo": "IrusVN/Irus-Portfolio-Pages",
+    "logo_dark": "icon_white.png",
+    "logo_light": "icon_black.png",
     "description": "Personal portfolio website showcasing projects and skills",
     "tags": ["Portfolio", "Web Design", "React"]
   },
   {
     "name": "BTLonWeb",
     "repo": "IrusVN/BTLonWeb",
+    "logo_dark": "icon_white.png",
+    "logo_light": "icon_black.png",
     "description": "Web development project showcasing full-stack capabilities",
     "tags": ["HTML", "CSS", "JavaScript"]
   },
   {
     "name": "Furnico",
     "repo": "IrusVN/Furnico",
+    "logo_dark": "icon_white.png",
+    "logo_light": "icon_black.png",
     "description": "Modern furniture e-commerce website - noithat08.themeweb4s.com",
     "tags": ["Nuxt.js", "Vue.js", "E-commerce"]
   }

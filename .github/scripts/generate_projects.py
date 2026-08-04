@@ -251,10 +251,14 @@ if __name__ == "__main__":
     outdir = sys.argv[2] if len(sys.argv) > 2 else "."
     with open(src) as f:
         projects = json.load(f)
-    for p in projects:
-        p["_logo_b64"] = load_logo_b64(p.get("logo"))
+    
     for theme, fname in (("dark", "projects.svg"), ("light", "projects-light.svg")):
         set_theme(theme)
+        # Load logo based on theme
+        for p in projects:
+            logo_key = f"logo_{theme}"
+            logo_path = p.get(logo_key) or p.get("logo")
+            p["_logo_b64"] = load_logo_b64(logo_path)
         svg = build(projects, theme)
         path = os.path.join(outdir, fname)
         with open(path, "w") as f:
