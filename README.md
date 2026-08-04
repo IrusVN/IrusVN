@@ -11,22 +11,22 @@
 
 <div align="center">
 
-<!-- Streak — full width -->
+<!-- Streak Stats — full width -->
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://streak-stats.demolab.com/?user=IrusVN&hide_border=true&background=0A101F&stroke=22D3EE&ring=A78BFA&fire=10B981&currStreakLabel=22D3EE&sideLabels=94A3B8&currStreakNum=F8FAFC&sideNums=F8FAFC&dates=64748B&titleColor=22D3EE&card_width=1180" />
-  <img width="100%" src="https://streak-stats.demolab.com/?user=IrusVN&hide_border=true&background=FFFFFF&stroke=0891B2&ring=7C3AED&fire=059669&currStreakLabel=0891B2&sideLabels=475569&currStreakNum=0F172A&sideNums=0F172A&dates=94A3B8&titleColor=0891B2&card_width=1180" alt="Hoàng's streak" />
+  <source media="(prefers-color-scheme: dark)" srcset="https://stats.irusgear.me/api/streak?username=IrusVN&theme=dark" />
+  <img width="100%" src="https://stats.irusgear.me/api/streak?username=IrusVN&theme=light" alt="GitHub Streak Stats" />
 </picture>
 
 <br/>
 
 <!-- Stats + Top languages — side by side -->
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github-readme-stats-sigma-rosy-28.vercel.app/api?username=IrusVN&show_icons=true&count_private=true&include_all_commits=true&hide_rank=true&hide_border=true&title_color=22D3EE&icon_color=A78BFA&text_color=94A3B8&bg_color=0A101F&card_width=500" />
-  <img width="49%" src="https://github-readme-stats-sigma-rosy-28.vercel.app/api?username=IrusVN&show_icons=true&count_private=true&include_all_commits=true&hide_rank=true&hide_border=true&title_color=0891B2&icon_color=7C3AED&text_color=0F172A&bg_color=FFFFFF&card_width=500" alt="Hoàng's GitHub stats" />
+  <source media="(prefers-color-scheme: dark)" srcset="https://stats.irusgear.me/api/stats?username=IrusVN&theme=dark" />
+  <img width="49%" src="https://stats.irusgear.me/api/stats?username=IrusVN&theme=light" alt="GitHub Stats" />
 </picture>
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github-readme-stats-sigma-rosy-28.vercel.app/api/top-langs/?username=IrusVN&layout=compact&langs_count=8&hide_border=true&title_color=22D3EE&text_color=94A3B8&bg_color=0A101F&card_width=500" />
-  <img width="49%" src="https://github-readme-stats-sigma-rosy-28.vercel.app/api/top-langs/?username=IrusVN&layout=compact&langs_count=8&hide_border=true&title_color=0891B2&text_color=0F172A&bg_color=FFFFFF&card_width=500" alt="Top languages" />
+  <source media="(prefers-color-scheme: dark)" srcset="https://stats.irusgear.me/api/languages?username=IrusVN&theme=dark" />
+  <img width="49%" src="https://stats.irusgear.me/api/languages?username=IrusVN&theme=light" alt="Most Used Languages" />
 </picture>
 
 </div>
