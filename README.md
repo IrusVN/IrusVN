@@ -13,20 +13,20 @@
 
 <!-- Streak Stats — full width -->
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://stats.irusgear.me/api/streak?username=IrusVN&theme=dark" />
-  <img width="100%" src="https://stats.irusgear.me/api/streak?username=IrusVN&theme=light" alt="GitHub Streak Stats" />
+  <source media="(prefers-color-scheme: dark)" srcset="https://stats.irusgear.me/api?username=IrusVN&type=streak&theme=dark" />
+  <img width="100%" src="https://stats.irusgear.me/api?username=IrusVN&type=streak&theme=light" alt="GitHub Streak Stats" />
 </picture>
 
 <br/>
 
 <!-- Stats + Top languages — side by side -->
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://stats.irusgear.me/api/stats?username=IrusVN&theme=dark" />
-  <img width="49%" src="https://stats.irusgear.me/api/stats?username=IrusVN&theme=light" alt="GitHub Stats" />
+  <source media="(prefers-color-scheme: dark)" srcset="https://stats.irusgear.me/api?username=IrusVN&theme=dark" />
+  <img width="49%" src="https://stats.irusgear.me/api?username=IrusVN&theme=light" alt="GitHub Stats" />
 </picture>
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://stats.irusgear.me/api/languages?username=IrusVN&theme=dark" />
-  <img width="49%" src="https://stats.irusgear.me/api/languages?username=IrusVN&theme=light" alt="Most Used Languages" />
+  <source media="(prefers-color-scheme: dark)" srcset="https://stats.irusgear.me/api/top-langs?username=IrusVN&theme=dark" />
+  <img width="49%" src="https://stats.irusgear.me/api/top-langs?username=IrusVN&theme=light" alt="Most Used Languages" />
 </picture>
 
 </div>
