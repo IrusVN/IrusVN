@@ -141,20 +141,44 @@ def build_grids(path):
 
     gray = np.asarray(_prep_gray(small)).astype(np.float32)
 
-    # light mode: background kept, dots draw the dark parts of the photo
-    light = floyd_steinberg(gray)
-
-    # dark mode: dots draw the *lit* subject on the dark panel, so invert
-    # tone inside the subject and drop the background entirely
+    # Subject mask at grid resolution -- used by both modes below
     rgb_small = np.asarray(small).astype(np.float32)
     mask, _ = subject_mask(rgb_small, thresh=40.0)
     mask = ndi.binary_closing(mask, np.ones((5, 5)))
     mask = ndi.binary_fill_holes(mask)
 
+    # light mode: background kept, dots draw the dark parts of the photo.
+    # JPEG noise in the flat background gets amplified by autocontrast +
+    # contrast + unsharp and dithers into sparse speckle outside the
+    # silhouette. Suppress it by clearing small disconnected clusters of
+    # ink outside the subject mask -- those are noise, not portrait detail.
+    light = floyd_steinberg(gray)
+    stray = light & ~mask
+    stray_labelled, n_stray = ndi.label(stray)
+    if n_stray > 0:
+        stray_sizes = ndi.sum(stray, stray_labelled, range(1, n_stray + 1))
+        # keep only components large enough to be real portrait edge detail;
+        # everything smaller is JPEG-compression / sensor noise artefact
+        keep_ids = np.flatnonzero(stray_sizes >= 25) + 1
+        stray_keep = np.isin(stray_labelled, keep_ids)
+        light &= ~(stray & ~stray_keep)
+
+    # dark mode: dots draw the *lit* subject on the dark panel, so invert
+    # tone inside the subject and drop the background entirely.
     inv = 255.0 - gray
+
+    # Compress the inverted range before dithering. Without this, bright
+    # fabric (white shirt) maps through inv to very low values that dither
+    # as near-solid slabs, and shadow folds map to near-white and vanish.
+    # A soft power curve pulls both extremes toward midtone so the FS
+    # dither has room to lay down visible dot texture everywhere.
+    inv_norm = np.clip(inv, 0.0, 255.0) / 255.0
+    inv_compressed = np.power(inv_norm, 0.72) * 255.0
+    inv_compressed = np.clip(inv_compressed, 18.0, 232.0)
+
     # push the (now bright) backdrop to white so it diffuses no error into
     # the subject, then hard-clear anything outside the mask afterwards
-    inv_masked = np.where(mask, inv, 255.0)
+    inv_masked = np.where(mask, inv_compressed, 255.0)
     dark = floyd_steinberg(inv_masked)
 
     # hard-clear error-diffusion bleed at the mask edge: dither pushes error
