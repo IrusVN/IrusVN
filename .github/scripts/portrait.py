@@ -6,6 +6,10 @@ Turns one photo into the 300x340 1-bit dot grids the banner needs:
   * light mode keeps the background (dots draw the dark parts of the photo)
   * dark mode segments the background out (dots draw the lit subject)
 
+A background-removed PNG (alpha channel) is accepted and preferred: its
+silhouette is ground truth, which matters when the shirt is the same colour
+as the wall and colour-distance segmentation bites into the shoulders.
+
 Everything downstream reads the .npy files this writes -- those plus this
 script are the source of truth, not the SVG.
 """
@@ -75,16 +79,25 @@ def estimate_background(rgb):
     return np.median(edges, axis=0)
 
 
-def subject_mask(rgb, thresh=40.0):
-    """Threshold on colour distance from the backdrop, then clean up.
+def subject_mask(rgb, thresh=40.0, alpha=None):
+    """Subject silhouette, then clean up.
 
-    closing -> fill holes -> keep largest component, which is the run the
-    Master Prompt calls for. Without the largest-component step, JPEG noise
-    in the corners survives as stray islands.
+    If an alpha channel is supplied (background-removed PNG) it seeds the
+    mask directly: a white shirt against a white wall is colour-identical
+    to the backdrop and the colour test bites into the shoulder tops.
+    Otherwise the mask comes from thresholding colour distance to the
+    backdrop.
+
+    Either way: closing -> fill holes -> keep largest component, which is
+    the run the Master Prompt calls for. Without the largest-component
+    step, JPEG noise in the corners survives as stray islands.
     """
     bg = estimate_background(rgb)
-    dist = np.linalg.norm(rgb - bg, axis=2)
-    m = dist > thresh
+    if alpha is not None:
+        m = alpha > 128
+    else:
+        dist = np.linalg.norm(rgb - bg, axis=2)
+        m = dist > thresh
     m = ndi.binary_closing(m, np.ones((15, 15)))
     m = ndi.binary_fill_holes(m)
     lab, n = ndi.label(m)
@@ -94,7 +107,7 @@ def subject_mask(rgb, thresh=40.0):
     return m, bg
 
 
-def head_shoulders_crop(img):
+def head_shoulders_crop(img, alpha=None):
     """Crop head + shoulders at the frame's aspect ratio.
 
     A tight face crop reads aggressive; the framing here keeps the top of the
@@ -102,7 +115,7 @@ def head_shoulders_crop(img):
     """
     rgb = np.asarray(img.convert("RGB")).astype(np.float32)
     H, W, _ = rgb.shape
-    m, _ = subject_mask(rgb)
+    m, _ = subject_mask(rgb, alpha=alpha)
 
     rows = [(y, np.nonzero(m[y])[0]) for y in range(H) if m[y].any()]
     if not rows:
@@ -135,15 +148,39 @@ def _prep_gray(rgb_img):
 
 def build_grids(path):
     """Return (light_ink, dark_ink) bool grids of shape (GRID_H, GRID_W)."""
-    img = Image.open(path).convert("RGB")
-    crop, box = head_shoulders_crop(img)
+    img = Image.open(path)
+    has_alpha = img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
+
+    if has_alpha:
+        alpha_full = np.asarray(img.split()[-1])
+    else:
+        alpha_full = None
+
+    crop, box = head_shoulders_crop(img, alpha=alpha_full)
+    x0, y0, cw, ch = box
+
+    # flatten any transparency BEFORE the tone pipeline sees it: convert("RGB")
+    # would otherwise leave fully-transparent pixels black and light mode
+    # (which keeps the background) would dither the whole frame solid
+    if has_alpha:
+        wall = Image.new("RGB", crop.size, (255, 255, 255))
+        wall.paste(crop, (0, 0), crop)
+        crop = wall
+    else:
+        crop = crop.convert("RGB")
     small = crop.resize((GRID_W, GRID_H), Image.LANCZOS)
 
     gray = np.asarray(_prep_gray(small)).astype(np.float32)
 
-    # Subject mask at grid resolution -- used by both modes below
+    # Subject mask at grid resolution -- used by both modes below. For a
+    # background-removed PNG the resized alpha channel IS the subject.
     rgb_small = np.asarray(small).astype(np.float32)
-    mask, _ = subject_mask(rgb_small, thresh=40.0)
+    alpha_small = None
+    if alpha_full is not None:
+        a_crop_img = Image.fromarray(alpha_full[y0:y0+ch, x0:x0+cw])
+        alpha_small = np.asarray(
+            a_crop_img.resize((GRID_W, GRID_H), Image.BILINEAR)).astype(np.float32)
+    mask, _ = subject_mask(rgb_small, thresh=40.0, alpha=alpha_small)
     mask = ndi.binary_closing(mask, np.ones((5, 5)))
     mask = ndi.binary_fill_holes(mask)
 
@@ -192,9 +229,7 @@ def build_grids(path):
 if __name__ == "__main__":
     import sys
     src = sys.argv[1] if len(sys.argv) > 1 else "logos/banner.jpeg"
-    light, dark, box = head_shoulders_crop and build_grids(src)
-    np.save("/tmp/grid_light.npy", light)
-    np.save("/tmp/grid_dark.npy", dark)
+    light, dark, box = build_grids(src)
     print(f"crop box (x,y,w,h) = {box}")
     print(f"light: {light.sum():6d} dots  ink {light.mean()*100:.1f}%")
     print(f"dark : {dark.sum():6d} dots  ink {dark.mean()*100:.1f}%")
