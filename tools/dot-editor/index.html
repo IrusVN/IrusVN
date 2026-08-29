@@ -1,0 +1,689 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IrusVN · Dot Editor</title>
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="%23111111"/><rect x="1" y="1" width="8" height="6" rx="1" fill="%23070B14"/><rect x="2" y="2" width="2" height="2" fill="%2322D3EE"/><rect x="6" y="2" width="2" height="2" fill="%2322D3EE"/><rect x="3" y="4.6" width="4" height="1" fill="%23B8F135"/><rect x="8.2" y="8" width="1.6" height="1.6" fill="%23FFD23F"/></svg>'>
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+/* ================================================================
+   PIXEL TERMINAL BRUTALISM — Phase R1 → R3
+   Neo-Brutalism (viền đen dày + bóng cứng) trên nền giấy kem,
+   hai viewport tối như màn hình CRT gắn trên vỏ máy.
+   LANDING (.github/pages/index.html) NHÂN BẢN TOKEN NÀY —
+   sửa màu ở đây thì sửa cả ở đó cho đồng bộ.
+   ================================================================ */
+:root{
+  --paper:#FFF8EC;      /* nền chrome (vỏ máy) */
+  --panel:#FFFFFF;      /* mặt nổi */
+  --ink:#111111;        /* MỌI viền + chữ thân bài */
+  --cyan:#22D3EE;       /* primary */
+  --violet:#A78BFA;     /* panel DARK */
+  --amber:#FFD23F;      /* panel LIGHT / highlight */
+  --coral:#FF5D5D;      /* xoá / danger */
+  --lime:#B8F135;       /* success / phosphor */
+  --screen:#070B14;     /* mặt màn hình CRT */
+
+  /* token tương thích ngược với app.js (không dùng nữa nhưng an toàn) */
+  --bg:var(--screen); --edge:var(--ink); --tx:var(--ink); --dim:#6b7280;
+  --accent:var(--cyan); --danger:var(--coral);
+
+  --bd:3px solid var(--ink);
+  --sh-sm:2px 2px 0 var(--ink);
+  --sh-md:4px 4px 0 var(--ink);
+  --r:8px;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;
+  --disp:"VT323",var(--mono);
+  --chip:"Press Start 2P",var(--mono);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font:13px/1.5 var(--mono);
+  display:flex; flex-direction:column; overflow:hidden;
+}
+::selection{background:var(--amber)}
+
+button{
+  font:inherit; font-weight:600; color:var(--ink); background:var(--panel);
+  border:var(--bd)!important; border-radius:6px!important;
+  padding:4px 10px; cursor:pointer; user-select:none;
+  box-shadow:var(--sh-sm);
+  transition:transform .08s ease, box-shadow .08s ease;
+}
+button:hover{transform:translate(-1px,-1px); box-shadow:3px 3px 0 var(--ink)}
+button:active{transform:translate(2px,2px); box-shadow:0 0 0 var(--ink)}
+button:disabled{opacity:.35; transform:none!important; box-shadow:var(--sh-sm)!important; cursor:default}
+button:focus-visible, input:focus-visible, select:focus-visible{
+  outline:3px solid var(--cyan); outline-offset:2px;
+}
+button.active{background:var(--ink); color:var(--paper); box-shadow:none; transform:none}
+/* công cụ đang chọn giữ vệt màu nhận dạng dưới chân nút */
+button.active[data-tool="brush"]{box-shadow:inset 0 -5px 0 var(--cyan)}
+button.active[data-tool="erase"]{box-shadow:inset 0 -5px 0 var(--coral)}
+button.active[data-tool="flood"]{box-shadow:inset 0 -5px 0 var(--violet)}
+button.primary{background:var(--cyan)}
+button.warn:hover{background:var(--coral); color:var(--panel)}
+#zOut,#zIn{min-width:32px; font-weight:700; font-size:15px; line-height:1}
+
+/* ---------- header ---------- */
+header{
+  display:flex; align-items:center; gap:16px;
+  padding:10px 18px; border-bottom:var(--bd); flex:none;
+  background:
+    repeating-linear-gradient(-45deg, transparent 0 14px, rgba(17,17,17,.05) 14px 16px),
+    var(--paper);
+}
+.wordmark{font-family:var(--disp); font-size:38px; line-height:.8; letter-spacing:1px}
+.wordmark b{color:transparent; -webkit-text-stroke:1.6px var(--ink); font-weight:400}
+.wordmark i{font-style:normal}
+.sticker-v{
+  font-family:var(--chip); font-size:8px; background:var(--amber);
+  border:var(--bd); border-radius:4px; padding:4px 5px;
+  transform:rotate(-4deg); box-shadow:var(--sh-sm);
+}
+header .sub{
+  color:var(--ink); opacity:.72; font-size:11px; max-width:430px;
+  border-left:2px dashed rgba(17,17,17,.35); padding-left:12px;
+}
+.sticker-v.cyan{background:var(--cyan); transform:rotate(3deg)}
+.sticker-v{transition:transform .15s ease}
+.sticker-v:hover{transform:rotate(0deg) scale(1.12)}
+.led-wrap{
+  margin-left:auto; display:flex; align-items:center; gap:7px;
+  font-family:var(--chip); font-size:8px;
+}
+.led{
+  width:11px; height:11px; border-radius:50%;
+  background:var(--lime); border:2px solid var(--ink);
+  animation:ledpulse 2.4s ease-in-out infinite;
+}
+@keyframes ledpulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(184,241,53,.55)}
+  50%{box-shadow:0 0 9px 2px rgba(184,241,53,.55)}
+}
+
+/* ---------- toolbar ---------- */
+#toolbar{
+  display:flex; flex-wrap:wrap; align-items:stretch; gap:12px;
+  padding:12px 18px 8px; flex:none;
+}
+.group{
+  position:relative; display:flex; align-items:center; gap:4px;
+  border:var(--bd); border-radius:var(--r); background:var(--panel);
+  padding:12px 8px 5px; box-shadow:var(--sh-md);
+}
+.g-lbl{
+  position:absolute; top:-9px; left:8px;
+  font-family:var(--chip); font-size:7px; letter-spacing:.5px;
+  background:var(--paper); border:2px solid var(--ink); border-radius:4px;
+  padding:2px 5px; line-height:1;
+}
+/* tab nhãn màu theo nhóm — nhận dạng tức thì */
+#tools   .g-lbl{background:var(--cyan)}
+#sizes   .g-lbl{background:var(--violet)}
+#shapes  .g-lbl{background:var(--coral)}
+.group:nth-child(4) .g-lbl,
+.group:nth-child(5) .g-lbl,
+.group:nth-child(6) .g-lbl,
+.group:nth-child(7) .g-lbl,
+.group:nth-child(8) .g-lbl{background:var(--amber)}
+.group:nth-child(9) .g-lbl,
+.group:nth-child(10) .g-lbl{background:var(--lime)}
+.group button{border-radius:6px}
+.group button[data-tool="brush"]:not(.active){background:var(--cyan)}
+.group button[data-tool="erase"]:not(.active){background:var(--coral)}
+.group button[data-tool="flood"]:not(.active){background:var(--violet)}
+
+label.chk{
+  display:flex; align-items:center; gap:7px; font-weight:600;
+  padding:4px 8px 4px 4px; cursor:pointer; user-select:none;
+  border:2px solid transparent; border-radius:6px;
+}
+label.chk:hover{border-color:rgba(17,17,17,.35)}
+label.chk input{appearance:none; width:16px; height:16px; margin:0; cursor:pointer;
+  background:var(--paper); border:2.5px solid var(--ink); border-radius:4px;
+  display:inline-grid; place-items:center; transition:background .1s ease}
+label.chk input::before{
+  content:"✕"; font-weight:900; font-size:11px; line-height:1; color:transparent;
+}
+label.chk input:checked{background:var(--lime)}
+label.chk input:checked::before{color:var(--ink)}
+
+.size-dot{display:inline-grid; place-items:center; width:20px; height:16px}
+.size-dot i{background:currentColor; border-radius:50%; display:block}
+.size-dot i.d1{width:3px;height:3px}
+.size-dot i.d3{width:7px;height:7px;box-shadow:0 0 0 2.2px currentColor; background:transparent}
+.size-dot i.d5{width:11px;height:11px;box-shadow:0 0 0 2.2px currentColor; background:transparent}
+
+/* icon 4 hình dạng dot cho nhóm HINH DOT */
+.shape-ico{display:inline-grid; place-items:center; width:22px; height:16px}
+.shape-ico i{display:block}
+.shape-ico i.sq{width:9px; height:9px; background:currentColor; border-radius:1.5px}
+.shape-ico i.ci{width:10px; height:10px; background:currentColor; border-radius:50%}
+.shape-ico i.di{width:8px; height:8px; background:currentColor; transform:rotate(45deg); border-radius:1px}
+.shape-ico i.pl{width:11px; height:11px;
+  background:
+    linear-gradient(currentColor,currentColor) center/100% 3.5px no-repeat,
+    linear-gradient(currentColor,currentColor) center/3.5px 100% no-repeat;
+}
+
+#zoomLabel{
+  min-width:52px; text-align:center; font-weight:700; font-size:11.5px;
+  background:var(--ink); color:var(--lime); border-radius:5px; padding:3px 4px;
+  font-variant-numeric:tabular-nums; letter-spacing:.5px;
+  position:relative; overflow:hidden;
+}
+#zoomLabel::before{
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 2px, rgba(255,255,255,.07) 2px 3px),
+    linear-gradient(180deg, rgba(255,255,255,.16), transparent 45%);
+}
+#speckSize{
+  width:54px; background:var(--paper); color:var(--ink); font-weight:700;
+  border:2.5px solid var(--ink); border-radius:6px; padding:3px 6px; font:inherit;
+}
+select#animSel{
+  max-width:210px; font:inherit; font-weight:600; color:var(--ink);
+  appearance:none; -webkit-appearance:none;
+  background:
+    var(--ink) url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="7"><path d="M1 1l4 4 4-4" stroke="%23FFF8EC" stroke-width="2" fill="none"/></svg>') no-repeat right 8px center,
+    var(--paper);
+  border:var(--bd); border-radius:6px; padding:4px 24px 4px 8px; cursor:pointer;
+}
+select#animSel:focus-visible{outline:3px solid var(--cyan); outline-offset:2px}
+
+/* ---------- main / panels ---------- */
+main{flex:1; display:flex; min-height:0; padding:10px 18px 12px; gap:14px}
+.panewrap{
+  flex:1; display:flex; flex-direction:column; min-width:0;
+  border:var(--bd); border-radius:var(--r); overflow:hidden;
+  box-shadow:var(--sh-md); background:var(--screen);
+  transition:transform .12s ease, box-shadow .12s ease;
+}
+.panewrap.active-panel{
+  transform:translate(-2px,-2px);
+  box-shadow:6px 6px 0 var(--ink), 0 0 0 4px var(--cyan);
+}
+.panel-head{
+  display:flex; align-items:center; gap:10px;
+  padding:8px 12px; flex:none; border-bottom:var(--bd);
+}
+.darkp .panel-head{background:var(--violet)}
+.lightp .panel-head{background:var(--amber)}
+/* sọc kẻ mờ trên head — chất nhựa */
+.darkp .panel-head, .lightp .panel-head{
+  background-image:repeating-linear-gradient(90deg, transparent 0 9px, rgba(17,17,17,.08) 9px 11px);
+}
+.p-name{
+  font-family:var(--chip); font-size:10px; letter-spacing:1px;
+  background:var(--ink); color:var(--paper);
+  padding:4px 7px; border-radius:5px;
+}
+.p-name .p-dot{display:inline-block; width:7px; height:7px; border-radius:50%;
+  margin-right:6px; vertical-align:baseline}
+.darkp  .p-dot{background:var(--screen)}
+.lightp .p-dot{background:#fff}
+.panel-head .count{
+  font-family:var(--mono); font-weight:600; font-size:11.5px; margin-right:auto;
+  background:var(--ink); color:var(--lime);
+  text-shadow:0 0 5px rgba(184,241,53,.6);
+  border-radius:5px; padding:2px 9px;
+  font-variant-numeric:tabular-nums; letter-spacing:.5px;
+  position:relative; overflow:hidden;
+}
+/* vệt scanline + highlight kính trên LCD */
+.panel-head .count::before{
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 2px, rgba(255,255,255,.07) 2px 3px),
+    linear-gradient(180deg, rgba(255,255,255,.16), transparent 45%);
+}
+.panel-head button{
+  font-size:11px; padding:2px 9px;
+  background:var(--paper); box-shadow:var(--sh-sm);
+}
+.darkp .panel-head button:hover{background:#EDE4FB}
+.lightp .panel-head button:hover{background:#FFF0B8}
+
+.viewport{flex:1; overflow:auto; position:relative; overscroll-behavior:contain}
+.darkp .viewport, .lightp .viewport{background:var(--screen)}
+/* scrollbar kiểu máy — track tối, thumb kem viền đen */
+.viewport::-webkit-scrollbar{width:13px; height:13px}
+.viewport::-webkit-scrollbar-track{background:#0D1526}
+.viewport::-webkit-scrollbar-thumb{
+  background:var(--paper); border:2.5px solid var(--ink); border-radius:6px;
+}
+.viewport::-webkit-scrollbar-thumb:hover{background:var(--amber)}
+.viewport::-webkit-scrollbar-corner{background:#0D1526}
+
+/* ---------- lớp kính CRT (R3) ---------- */
+.screenwrap{flex:1; min-height:0; position:relative; display:flex}
+.crt-fx{
+  position:absolute; inset:0; z-index:5; pointer-events:none; overflow:hidden;
+  opacity:0; visibility:hidden;
+  transition:opacity .25s ease, visibility .25s;
+}
+.crt-fx.always,
+body:has(#chkFx:checked) .crt-fx:not(.always){opacity:1; visibility:visible}
+/* scanline mảnh + vignette méo góc như màn hình bóng chân không */
+.crt-fx::before{
+  content:""; position:absolute; inset:0;
+  background:
+    repeating-linear-gradient(0deg, rgba(255,255,255,.045) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse 135% 108% at 50% 44%, transparent 60%, rgba(0,0,0,.44) 100%);
+}
+/* vệt sáng chạy chậm xuống dưới */
+.crt-fx::after{
+  content:""; position:absolute; left:0; right:0; height:22%; top:-26%;
+  background:linear-gradient(180deg, transparent, rgba(232,240,254,.07) 50%, transparent);
+  animation:crt-sweep 9s linear infinite;
+}
+@keyframes crt-sweep{to{top:126%}}
+.stack{position:relative; touch-action:none; cursor:crosshair}
+.stack.panning{cursor:grabbing}
+.stack canvas{
+  position:absolute; left:0; top:0;
+  image-rendering:pixelated; display:block;
+}
+.placeholder{
+  position:absolute; inset:0; display:flex; flex-direction:column; gap:14px;
+  align-items:center; justify-content:center;
+  color:var(--lime); text-align:center; pointer-events:none;
+}
+.ph-art{
+  font-size:15px; line-height:1.25; white-space:pre; color:var(--lime);
+  opacity:.9; text-align:left;
+}
+.ph-txt{color:rgba(232,240,254,.75); font-size:12px}
+.ph-kbd{color:var(--lime); border:1.5px solid var(--lime); border-radius:4px; padding:0 6px}
+
+/* ---------- footer / status bar ---------- */
+footer{
+  display:flex; align-items:center; gap:14px;
+  padding:7px 18px; border-top:var(--bd); flex:none;
+  background:var(--screen); color:var(--lime);
+  font-size:12px;
+}
+footer .pr{font-weight:700; color:var(--lime)}
+footer .pr::after{content:"_"; animation:blink 1.1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+#hint{flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:60px}
+#coords{
+  font-variant-numeric:tabular-nums; color:rgba(232,240,254,.92);
+  border:1.5px solid rgba(184,241,53,.4); border-radius:5px;
+  padding:0 8px; background:rgba(184,241,53,.06);
+}
+#coords:not(:empty)::before{content:"⌖ "; color:var(--lime)}
+/* ● REC chỉ sáng khi JS bật display:inline (grid có thay đổi) */
+#dirty{
+  color:var(--coral); display:none; font-weight:700;
+  background:rgba(255,93,93,.12);
+  border:2px solid var(--coral); border-radius:5px; padding:3px 7px;
+  font-family:var(--chip); font-size:8px; letter-spacing:.5px;
+  animation:recpulse 1s steps(2, jump-none) infinite;
+}
+@keyframes recpulse{50%{opacity:.35}}
+details#help{margin-left:auto; color:rgba(232,240,254,.8)}
+details#help summary{cursor:pointer; outline-offset:3px}
+details#help summary:hover{color:var(--lime)}
+details#help td{padding:1px 10px 1px 0; color:rgba(232,240,254,.78)}
+details#help td:first-child{color:#FFD23F; white-space:nowrap; font-weight:600}
+details#help{position:relative}
+details#help[open] table{
+  position:absolute; bottom:26px; right:0; z-index:40;
+  background:var(--panel); color:var(--ink);
+  border:var(--bd); border-radius:var(--r); box-shadow:var(--sh-md);
+  padding:10px 12px; font-size:12px;
+}
+details#help[open] td{color:var(--ink)}
+details#help[open] td:first-child{color:#155e75}
+
+/* ---------- dropzone ---------- */
+#dropzone{
+  position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+  background:rgba(17,17,17,.88); color:var(--amber);
+  font-size:16px; font-weight:700; text-align:center; padding:30px;
+  border:4px dashed var(--amber); z-index:50; pointer-events:none;
+}
+body.dragging #dropzone{display:flex}
+
+/* ---------- dialogs (retro window) ---------- */
+dialog{
+  background:var(--paper); color:var(--ink);
+  border:var(--bd)!important; border-radius:10px!important;
+  padding:0; box-shadow:8px 8px 0 var(--ink);
+}
+dialog::backdrop{background:repeating-linear-gradient(-45deg, rgba(17,17,17,.62) 0 10px, rgba(17,17,17,.74) 10px 20px)}
+.dlg-head, .dlg-titlebar{
+  display:flex; align-items:center; gap:10px; padding:10px 14px;
+  border-bottom:var(--bd);
+  background:
+    repeating-linear-gradient(90deg, transparent 0 8px, rgba(17,17,17,.07) 8px 10px),
+    var(--amber);
+  font-family:var(--chip); font-size:10px; letter-spacing:1px; color:var(--ink);
+}
+.dialog-x{
+  margin-left:auto; width:28px; height:28px; padding:0!important;
+  display:grid; place-items:center; font-size:13px;
+}
+.anim-row{display:flex; gap:18px; flex-wrap:wrap}
+.anim-field{display:flex; flex-direction:column; gap:4px; flex:1; min-width:120px}
+.anim-field span{font-size:11px; font-weight:600; opacity:.8}
+.anim-field input{
+  width:100%; box-sizing:border-box; background:var(--ink); color:var(--lime);
+  text-shadow:0 0 5px rgba(184,241,53,.55);
+  border-radius:6px; padding:6px 9px;
+  font:inherit; font-weight:600; font-variant-numeric:tabular-nums;
+}
+.anim-preview{
+  width:100%; aspect-ratio:1180/610; background:var(--screen);
+  display:block;
+}
+.dlg-body{padding:14px; display:flex; flex-direction:column; gap:12px}
+.dlg-foot{display:flex; align-items:center; gap:8px; padding:10px 14px; border-top:var(--bd)}
+.dlg-foot [id$="Status"]{flex:1; font-size:11px; font-weight:600; opacity:.85}
+.dlg-note{
+  font-size:11px; line-height:1.55;
+  background:rgba(34,211,238,.08); border-left:3px solid var(--cyan);
+  padding:8px 10px; border-radius:0 6px 6px 0;
+}
+/* ba đèn tròn trên thanh tiêu đề — cửa sổ máy cổ điển */
+.win-dots{display:inline-flex; gap:4px; margin-right:4px}
+.win-dots i{width:9px; height:9px; border-radius:50%; border:2px solid var(--ink); display:block}
+.win-dots i:nth-child(1){background:var(--coral)}
+.win-dots i:nth-child(2){background:var(--amber)}
+.win-dots i:nth-child(3){background:var(--lime)}
+.dialog-x:hover{background:var(--coral); color:var(--paper)}
+/* mặt kính lõm cho khung xem trước trong dialog */
+.glass{position:relative; overflow:hidden; border-radius:6px; border:var(--bd); background:var(--screen)}
+.glass img, .glass canvas{display:block}
+
+/* banner dialog */
+#bannerDlg{width:min(1240px,96vw)}
+.banner-grid{display:flex; flex-direction:column; gap:14px; padding:14px}
+.banner-item{display:flex; flex-direction:column; gap:6px}
+.banner-item h3{
+  margin:0; font-family:var(--chip); font-size:10px; letter-spacing:1px;
+  display:inline-block; background:var(--ink); color:var(--paper);
+  padding:4px 7px; border-radius:5px;
+}
+.banner-item img{
+  width:100%; aspect-ratio:1180/610; display:block; background:var(--screen);
+}
+
+/* ---------- motion pass (R3) ---------- */
+dialog[open]{animation:dlg-pop .2s cubic-bezier(.34,1.56,.64,1)}
+@keyframes dlg-pop{
+  from{transform:scale(.9) rotate(-1.5deg); opacity:0}
+  62%{transform:scale(1.012) rotate(.4deg); opacity:1}
+}
+dialog[open]::backdrop{animation:bkd-in .22s ease}
+@keyframes bkd-in{from{opacity:0}}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.001s!important; animation-iteration-count:1!important;
+    transition-duration:.001s!important;
+  }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wordmark">IRUSVN<b>·</b><i>DOT EDITOR</i></div>
+  <span class="sticker-v cyan">R2</span>
+  <span class="sticker-v">v2</span>
+  <span class="sub">sửa lưới chân dung cho dark.svg / light.svg — nguồn gốc: portrait_dark.npy / portrait_light.npy</span>
+  <div class="led-wrap"><span class="led"></span>ONLINE</div>
+</header>
+
+<div id="toolbar">
+  <div class="group" id="tools">
+    <span class="g-lbl">CONG CU</span>
+    <button data-tool="brush" id="tBrush" title="Vẽ dot (B)">✏️ Vẽ</button>
+    <button data-tool="erase" id="tErase" title="Xoá dot (E)">◌ Xoá</button>
+    <button data-tool="flood" id="tFlood" title="Xoá cả cụm liền nhau (F)">⌗ Xoá cụm</button>
+  </div>
+
+  <div class="group" id="sizes">
+    <span class="g-lbl">CO</span>
+    <button data-size="0" title="1 dot"><span class="size-dot"><i class="d1"></i></span></button>
+    <button data-size="1" title="3×3"><span class="size-dot"><i class="d3"></i></span></button>
+    <button data-size="2" title="~5×5 tròn"><span class="size-dot"><i class="d5"></i></span></button>
+  </div>
+
+  <div class="group" id="shapes">
+    <span class="g-lbl">HINH DOT</span>
+    <button data-shape="square" title="Vuông — mặc định, như banner gốc"><span class="shape-ico"><i class="sq"></i></span></button>
+    <button data-shape="circle" title="Tròn"><span class="shape-ico"><i class="ci"></i></span></button>
+    <button data-shape="diamond" title="Kim cương"><span class="shape-ico"><i class="di"></i></span></button>
+    <button data-shape="plus" title="Cộng (+)"><span class="shape-ico"><i class="pl"></i></span></button>
+  </div>
+
+  <div class="group">
+    <span class="g-lbl">CHE DO</span>
+    <label class="chk" title="Mọi thao tác áp cho cả hai lưới cùng lúc">
+      <input type="checkbox" id="chkSync"> sync 2 lưới
+    </label>
+    <label class="chk" title="Hiện lưới tham chiếu mỗi 10 ô (G)">
+      <input type="checkbox" id="chkGrid"> lưới
+    </label>
+    <label class="chk" title="Lớp kính CRT: scanline + vignette + vệt quét trên 2 viewport">
+      <input type="checkbox" id="chkFx"> CRT fx
+    </label>
+  </div>
+
+  <div class="group">
+    <span class="g-lbl">MAT DO DOT</span>
+    <button id="densityDown" title="Giảm số lượng dots của khung đang chọn (10–200%)">−</button>
+    <span id="densityLabel" aria-live="polite">—</span>
+    <button id="densityUp" title="Tăng số lượng dots của khung đang chọn (10–200%)">+</button>
+  </div>
+
+  <div class="group">
+    <span class="g-lbl">KICH THUOC DOT</span>
+    <button id="sizeDown" title="Giảm kích thước dots của khung đang chọn (50–150%)">−</button>
+    <span id="sizeLabel" aria-live="polite">—</span>
+    <button id="sizeUp" title="Tăng kích thước dots của khung đang chọn (50–150%)">+</button>
+  </div>
+
+  <div class="group">
+    <span class="g-lbl">ZOOM</span>
+    <button id="zOut" title="Thu nhỏ (−)">−</button>
+    <span id="zoomLabel">100%</span>
+    <button id="zIn" title="Phóng to (+)">+</button>
+    <button id="zFit" title="Vừa khung (0)">⤢ fit</button>
+  </div>
+
+  <div class="group">
+    <span class="g-lbl">LICH SU</span>
+    <button id="btnUndo" title="Hoàn tác (Ctrl+Z)">↶ Undo</button>
+    <button id="btnRedo" title="Làm lại (Ctrl+Y)">↷ Redo</button>
+  </div>
+
+  <div class="group">
+    <span class="g-lbl">DON NHIEU</span>
+    <input type="number" id="speckSize" min="1" max="500" value="5" title="Xoá mọi cụm nhỏ hơn N dot">
+    <button id="btnSpeck" title="Xoá mọi cụm liền nhau có kích thước &lt; N dot">&lt; N dot</button>
+  </div>
+
+  <div class="group">
+    <span class="g-lbl">ANIMATION</span>
+    <select id="animSel" title="Preset chuyển động lớp chân dung trong vòng lặp">
+      <option value="drift">drift — tan rồi tụ về logo</option>
+      <option value="ripple">ripple — lan tỏa ra ngoài</option>
+      <option value="shimmer">shimmer — lấp lánh tại chỗ</option>
+      <option value="static">static — đứng yên</option>
+    </select>
+    <button id="btnAnim" title="Tham số + mô phỏng chuyển động + tải banner_config.json">⚙ Xem thử</button>
+    <button id="btnBanner" title="Xem dark.svg / light.svg động (bản trên đĩa)">🎬 Banner thật</button>
+  </div>
+
+  <div class="group">
+    <span class="g-lbl">FILE</span>
+    <button id="btnLoadAll" class="primary">📂 Load .npy</button>
+    <button id="btnExport" class="primary" disabled title="Lưu portrait_dark.npy + portrait_light.npy">⬇ Export .npy</button>
+    <button id="btnFetchRepo" title="Nạp portrait_dark/light.npy trực tiếp từ repo qua HTTP">☁ Từ repo</button>
+  </div>
+
+  <div class="group">
+    <span class="g-lbl">PROJECT</span>
+    <button id="btnSaveProj" disabled title="Lưu cả 2 lưới + tham số animation thành 1 file JSON">💾 Lưu project</button>
+    <button id="btnOpenProj" title="Mở lại file dot-project.json đã lưu">📁 Mở project</button>
+  </div>
+
+  <input type="file" id="fileAll" accept=".npy,application/octet-stream" multiple hidden>
+  <input type="file" id="fileProj" accept=".json,application/json" hidden>
+</div>
+
+<main>
+  <div class="panewrap darkp" id="pwDark">
+    <div class="panel-head">
+      <span class="p-name"><span class="p-dot"></span>DARK</span>
+      <span class="count" id="cntDark">— chưa tải</span>
+      <button id="loadDark">load</button>
+      <button id="revertDark" disabled title="Khôi phục dữ liệu lúc tải">revert</button>
+    </div>
+    <div class="screenwrap">
+      <div class="viewport" id="vpDark">
+        <div class="stack" id="stackDark">
+          <canvas id="cvDark"></canvas>
+          <canvas id="ovDark"></canvas>
+        </div>
+        <div class="placeholder" id="phDark">
+<span class="ph-art"> ┌──────────────┐
+ │  ▄▄▄   ▄▄▄   │
+ │  █ █   █ █   │
+ │  ▀▀▀   ▀▀▀   │
+ │    ▀▀▀▀▀     │
+ │   ▄▄▄▄▄▄▄    │
+ └──────────────┘</span>
+          <span class="ph-txt">Kéo thả <span class="ph-kbd">portrait_dark.npy</span> vào đây<br>hoặc bấm “load” / “📂 Load .npy” / “☁ Từ repo”</span>
+        </div>
+      </div>
+      <div class="crt-fx"></div>
+    </div>
+  </div>
+
+  <div class="panewrap lightp" id="pwLight">
+    <div class="panel-head">
+      <span class="p-name"><span class="p-dot"></span>LIGHT</span>
+      <span class="count" id="cntLight">— chưa tải</span>
+      <button id="loadLight">load</button>
+      <button id="revertLight" disabled title="Khôi phục dữ liệu lúc tải">revert</button>
+    </div>
+    <div class="screenwrap">
+      <div class="viewport" id="vpLight">
+        <div class="stack" id="stackLight">
+          <canvas id="cvLight"></canvas>
+          <canvas id="ovLight"></canvas>
+        </div>
+        <div class="placeholder" id="phLight">
+<span class="ph-art"> ┌──────────────┐
+ │  ●●●   ●●●   │
+ │              │
+ │  \_______/   │
+ │    |     |   │
+ │   ⌁       ⌁  │
+ └──────────────┘</span>
+          <span class="ph-txt">Kéo thả <span class="ph-kbd">portrait_light.npy</span> vào đây<br>hoặc bấm “load” / “📂 Load .npy” / “☁ Từ repo”</span>
+        </div>
+      </div>
+      <div class="crt-fx"></div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <span class="pr">&gt;</span>
+  <span id="hint"></span>
+  <span id="coords"></span>
+  <span id="dirty">● REC</span>
+  <details id="help">
+    <summary>Phím tắt</summary>
+    <table>
+      <tr><td>B / E / F</td><td>Vẽ · Xoá · Xoá cụm</td></tr>
+      <tr><td>1 / 2 / 3</td><td>Cỡ cọ</td></tr>
+      <tr><td>Ctrl+Z / Ctrl+Y</td><td>Undo · Redo</td></tr>
+      <tr><td>Chuột phải + kéo</td><td>Tẩy nhanh bất kể công cụ đang chọn</td></tr>
+      <tr><td>Ctrl+lăn chuột</td><td>Zoom tại con trỏ</td></tr>
+      <tr><td>Space + kéo</td><td>Pan</td></tr>
+      <tr><td>G · 0</td><td>Bật/tắt lưới · Vừa khung</td></tr>
+    </table>
+  </details>
+</footer>
+
+<dialog id="animDlg">
+  <div class="dlg-head dlg-titlebar"><span class="win-dots"><i></i><i></i><i></i></span>ANIMATION
+    <button class="x dialog-x" id="animClose">✕</button>
+  </div>
+  <div class="dlg-body">
+    <div class="anim-row">
+      <label class="anim-field"><span>loop_dur — giây/vòng lặp (4–60)</span>
+        <input type="number" id="inLoopDur" step="0.1" min="4" max="60" value="13.9"></label>
+      <label class="anim-field"><span>drift_fraction (0–0.8)</span>
+        <input type="number" id="inDrift" step="0.02" min="0" max="0.8" value="0.42"></label>
+      <label class="anim-field"><span>band_noise σ (0–40)</span>
+        <input type="number" id="inNoise" step="0.5" min="0" max="40" value="4"></label>
+      <label class="anim-field"><span>n_bands (10–400)</span>
+        <input type="number" id="inBands" step="1" min="10" max="400" value="94"></label>
+    </div>
+    <div class="glass">
+      <canvas class="anim-preview" id="animCv" width="1180" height="610"></canvas>
+      <div class="crt-fx always"></div>
+    </div>
+    <div class="dlg-note">
+      Xem thử mô phỏng chuyển động của các band trên chính lưới dark đang nạp
+      (không phải render SVG thật). Bấm “Áp dụng” để tải banner_config.json đặt
+      vào repo root, hoặc “Copy lệnh” để lấy lệnh chạy banner.py kèm tham số.
+    </div>
+  </div>
+  <div class="dlg-foot">
+    <button id="btnApplyAnim" class="primary">✓ Áp dụng + tải banner_config.json</button>
+    <button id="btnCopyCmd">📋 Copy lệnh banner.py</button>
+    <span id="animStatus"></span>
+  </div>
+</dialog>
+
+<dialog id="bannerDlg">
+  <div class="dlg-head dlg-titlebar"><span class="win-dots"><i></i><i></i><i></i></span>BANNER THAT
+    <button class="x dialog-x" id="bannerClose">✕</button>
+  </div>
+  <div class="banner-grid">
+    <div class="dlg-note">
+      Đây là dark.svg / light.svg thật (SMIL chạy trong &lt;img&gt;) lấy từ repo root —
+      tức là bản trên đĩa. Sau khi sửa lưới: <b>Export .npy</b> → chép đè vào repo →
+      <b>python3 .github/scripts/banner.py --from-npy</b> → mở lại dialog này.
+    </div>
+    <div id="bannerWarn" style="display:none; color:#b45309; font-weight:700; font-size:11px">
+      ⚠ Lưới trong editor có thay đổi chưa export — SVG dưới đây chưa phản ánh chúng.
+    </div>
+    <div class="banner-item">
+      <h3>DARK</h3>
+      <div class="glass">
+        <img id="imgBannerDark" alt="dark.svg preview" title="dark.svg từ repo root">
+        <div class="crt-fx always"></div>
+      </div>
+    </div>
+    <div class="banner-item">
+      <h3>LIGHT</h3>
+      <div class="glass">
+        <img id="imgBannerLight" alt="light.svg preview" title="light.svg từ repo root">
+        <div class="crt-fx always"></div>
+      </div>
+    </div>
+  </div>
+  <div class="dlg-foot">
+    <span id="bannerStatus"></span>
+  </div>
+</dialog>
+
+<div id="dropzone">Thả file .npy hoặc dot-project.json để nạp<br>(tên chứa “dark” / “light” sẽ vào đúng khung)</div>
+
+<script src="app.js"></script>
+</body>
+</html>

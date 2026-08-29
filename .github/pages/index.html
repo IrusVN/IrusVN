@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Banner động trên GitHub profile của IrusVN — chân dung dot tan ra rồi tụ thành logo. Bộ toolkit: Dot Editor web + banner.py.">
+<title>IrusVN · Profile Banner Toolkit</title>
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="%23111111"/><rect x="1" y="1" width="8" height="6" rx="1" fill="%23070B14"/><rect x="2" y="2" width="2" height="2" fill="%2322D3EE"/><rect x="6" y="2" width="2" height="2" fill="%2322D3EE"/><rect x="3" y="4.6" width="4" height="1" fill="%23B8F135"/><rect x="8.2" y="8" width="1.6" height="1.6" fill="%23FFD23F"/></svg>'>
+<!-- Font dùng chung với editor; chưa tải font thì tự rơi về system mono -->
+<link rel="stylesheet" href="tools/dot-editor/fonts/fonts.css">
+<style>
+/* ================================================================
+   PIXEL TERMINAL BRUTALISM — Phase R4 (landing)
+   Bản NHÂN BẢN token từ tools/dot-editor/index.html —
+   sửa màu ở editor thì sửa cả ở đây cho đồng bộ.
+   ================================================================ */
+:root{
+  --paper:#FFF8EC;      /* nền chrome (vỏ máy) */
+  --panel:#FFFFFF;      /* mặt nổi */
+  --ink:#111111;        /* MỌI viền + chữ thân bài */
+  --cyan:#22D3EE;       /* primary */
+  --violet:#A78BFA;     /* phụ DARK */
+  --amber:#FFD23F;      /* highlight */
+  --coral:#FF5D5D;      /* danger / ON AIR */
+  --lime:#B8F135;       /* phosphor / success */
+  --screen:#070B14;     /* mặt màn hình CRT */
+
+  --bd:3px solid var(--ink);
+  --sh-sm:2px 2px 0 var(--ink);
+  --sh-md:4px 4px 0 var(--ink);
+
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;
+  --disp:"VT323",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --chip:"Press Start 2P",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font:13px/1.6 var(--mono);
+  min-height:100vh;
+  /* chấm bi mờ như đục lỗ vỏ máy */
+  background-image:radial-gradient(rgba(17,17,17,.07) 1px, transparent 1.4px);
+  background-size:20px 20px;
+}
+::selection{background:var(--amber)}
+a:focus-visible, label:focus-visible{outline:3px solid var(--cyan); outline-offset:2px}
+.wrap{width:100%; max-width:1040px; margin:0 auto; padding:36px 20px 0}
+
+/* ---------- ticker chạy chữ ---------- */
+.ticker{
+  background:var(--ink); border-bottom:var(--bd); overflow:hidden;
+  padding:8px 0; user-select:none;
+}
+.ticker-track{
+  display:inline-flex; white-space:nowrap; width:max-content;
+  animation:ticker-run 26s linear infinite;
+}
+.ticker-track span{
+  font-family:var(--chip); font-size:8px; letter-spacing:1px;
+  color:var(--lime); padding-right:2em;
+}
+@keyframes ticker-run{to{transform:translateX(-50%)}}
+
+/* ---------- hero chữ pixel ---------- */
+.hero{position:relative; text-align:center; padding:26px 0 8px}
+.tiles{display:flex; justify-content:center; align-items:center; gap:9px; flex-wrap:wrap}
+.tiles b{
+  font-family:var(--chip); font-weight:400;
+  font-size:clamp(19px,4.6vw,42px); line-height:1;
+  padding:clamp(10px,2vw,18px) clamp(8px,1.6vw,14px);
+  border:var(--bd); border-radius:10px; box-shadow:var(--sh-md);
+  display:inline-block;
+  transition:transform .15s ease;
+}
+.tiles b:hover{transform:rotate(0deg) scale(1.08)!important}
+.tiles b:nth-child(1){background:var(--cyan);   transform:rotate(-2.5deg)}
+.tiles b:nth-child(2){background:var(--panel);  transform:rotate(1.8deg)}
+.tiles b:nth-child(3){background:var(--violet); transform:rotate(-1.6deg)}
+.tiles b:nth-child(4){background:var(--amber);  transform:rotate(2.4deg)}
+.tiles b:nth-child(5){background:var(--panel);  transform:rotate(-2deg)}
+.tiles b:nth-child(6){background:var(--coral);  transform:rotate(1.5deg)}
+.tiles .cursor{
+  font-family:var(--disp); font-size:clamp(30px,6vw,58px); line-height:.6;
+  margin-left:2px; animation:blink 1.1s steps(2,start) infinite;
+}
+@keyframes blink{50%{opacity:0}}
+.hero .sub{
+  max-width:600px; margin:20px auto 0; opacity:.78; font-size:13.5px;
+}
+.stk{
+  position:absolute; font-family:var(--chip); font-size:8px;
+  border:var(--bd); border-radius:5px; padding:5px 6px; box-shadow:var(--sh-sm);
+}
+.stk.s1{top:6px; right:4%; background:var(--coral); color:var(--paper); transform:rotate(7deg)}
+.stk.s2{bottom:-4px; left:3%; background:var(--lime); transform:rotate(-6deg)}
+@media(max-width:700px){.stk{display:none}}
+
+/* ---------- khung TV CRT ---------- */
+.tv-card{width:100%; margin-top:44px; position:relative}
+/* ăng-ten chữ V cắm sau vỏ máy */
+.tv-card::before,.tv-card::after{
+  content:""; position:absolute; top:-38px; width:3px; height:48px;
+  background:var(--ink); border-radius:2px; z-index:-1;
+}
+.tv-card::before{left:21%; transform:rotate(-26deg)}
+.tv-card::after{right:21%; transform:rotate(26deg)}
+
+.chan-r{position:absolute; opacity:0; pointer-events:none}
+.tv-head{display:flex; align-items:center; gap:9px; flex-wrap:wrap}
+.chan{
+  cursor:pointer; user-select:none;
+  font-family:var(--chip); font-size:8px; letter-spacing:.5px;
+  padding:7px 10px; border:var(--bd); border-radius:6px;
+  background:var(--panel); box-shadow:var(--sh-sm);
+  display:inline-flex; align-items:center; gap:7px;
+  transition:transform .08s ease, box-shadow .08s ease, background .15s, color .15s;
+}
+.chan::before{content:""; width:8px; height:8px; border-radius:50%; border:2px solid currentColor}
+.chan:hover{transform:translate(-1px,-1px); box-shadow:3px 3px 0 var(--ink)}
+.chan:active{transform:translate(2px,2px); box-shadow:0 0 0 var(--ink)}
+#chDark:checked  ~ .tv-head label[for="chDark"],
+#chLight:checked ~ .tv-head label[for="chLight"]{background:var(--ink); color:var(--lime); box-shadow:none; transform:none}
+.onair{
+  margin-left:auto; font-family:var(--chip); font-size:7px;
+  color:var(--paper); background:var(--coral);
+  border:var(--bd); border-radius:5px; padding:5px 7px;
+  animation:blink 1.6s steps(2,start) infinite;
+}
+
+.tv{
+  margin-top:12px; display:flex; gap:12px;
+  border:var(--bd); border-radius:18px; background:var(--panel);
+  padding:12px; box-shadow:6px 6px 0 var(--ink);
+}
+.tv-screen{
+  position:relative; flex:1; min-width:0;
+  border:var(--bd); border-radius:12px; background:var(--screen); overflow:hidden;
+}
+.banner{display:block; width:100%; aspect-ratio:1180/610}
+.im-light{display:none}
+#chLight:checked ~ .tv .im-dark{display:none}
+#chLight:checked ~ .tv .im-light{display:block}
+
+/* mặt điều khiển bên phải: núm xoay + loa + đèn nguồn */
+.tv-side{
+  flex:none; width:88px; display:flex; flex-direction:column;
+  align-items:center; justify-content:space-evenly; gap:10px;
+  border:var(--bd); border-radius:12px; padding:10px 8px;
+  background:repeating-linear-gradient(-45deg, transparent 0 12px, rgba(17,17,17,.05) 12px 14px), var(--paper);
+}
+.knob{
+  position:relative; width:34px; height:34px; border-radius:50%;
+  border:var(--bd); background:var(--amber); box-shadow:var(--sh-sm);
+}
+.knob.k2{background:var(--violet)}
+.knob::after{
+  content:""; position:absolute; left:calc(50% - 1.5px); top:3px;
+  width:3px; height:10px; background:var(--ink); border-radius:2px;
+}
+.grille{
+  flex:1; width:40px; min-height:44px; border:2px solid var(--ink); border-radius:6px;
+  background:repeating-linear-gradient(0deg, var(--ink) 0 2px, transparent 2px 7px);
+}
+.pled{
+  width:11px; height:11px; border-radius:50%;
+  background:var(--lime); border:2px solid var(--ink);
+  animation:ledpulse 2.4s ease-in-out infinite;
+}
+@keyframes ledpulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(184,241,53,.55)}
+  50%{box-shadow:0 0 9px 2px rgba(184,241,53,.55)}
+}
+@media(max-width:680px){
+  .tv{flex-direction:column}
+  .tv-side{width:100%; flex-direction:row; padding:8px 12px}
+  .knob{width:28px; height:28px}
+  .grille{min-height:0; height:26px; width:70px; flex:1}
+  .tv-card::before,.tv-card::after{display:none}
+}
+
+/* lớp kính CRT phủ lên màn hình (nhân bản từ editor) */
+.crt-fx{position:absolute; inset:0; z-index:5; pointer-events:none; overflow:hidden}
+.crt-fx.always{opacity:1; visibility:visible}
+.crt-fx::before{
+  content:""; position:absolute; inset:0;
+  background:
+    repeating-linear-gradient(0deg, rgba(255,255,255,.045) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse 135% 108% at 50% 44%, transparent 60%, rgba(0,0,0,.44) 100%);
+}
+.crt-fx::after{
+  content:""; position:absolute; left:0; right:0; height:22%; top:-26%;
+  background:linear-gradient(180deg, transparent, rgba(232,240,254,.07) 50%, transparent);
+  animation:crt-sweep 9s linear infinite;
+}
+@keyframes crt-sweep{to{top:126%}}
+
+/* ---------- hàng nút dưới TV ---------- */
+.row{display:flex; gap:12px; flex-wrap:wrap; margin-top:16px; align-items:center}
+.btn{
+  font:inherit; font-weight:600; text-decoration:none; color:var(--ink);
+  background:var(--panel); border:var(--bd); border-radius:8px;
+  padding:9px 18px; box-shadow:var(--sh-sm); display:inline-block; user-select:none;
+  transition:transform .08s ease, box-shadow .08s ease;
+}
+.btn:hover{transform:translate(-1px,-1px); box-shadow:3px 3px 0 var(--ink)}
+.btn:active{transform:translate(2px,2px); box-shadow:0 0 0 var(--ink)}
+.btn.primary{background:var(--cyan)}
+.note{color:var(--ink); opacity:.66; font-size:12px}
+code{
+  background:var(--screen); color:var(--lime);
+  padding:1px 6px; border-radius:4px; font-size:11.5px;
+}
+
+/* ---------- các bước quy trình ---------- */
+.divider{
+  height:14px; margin:40px 0 30px;
+  border-top:var(--bd); border-bottom:var(--bd);
+  background:repeating-conic-gradient(var(--ink) 0 25%, transparent 0 50%) 0 0/14px 14px;
+}
+.sec-title{
+  font-family:var(--disp); font-weight:400; font-size:32px; line-height:1;
+  margin:0 0 20px; letter-spacing:1px;
+}
+.sec-title em{font-style:normal; color:transparent; -webkit-text-stroke:1.3px var(--ink)}
+.cards{
+  list-style:none; margin:0; padding:0;
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(185px,1fr)); gap:16px;
+}
+.card{
+  --rot:0deg; --dy:0px;
+  position:relative; background:var(--panel);
+  border:var(--bd); border-radius:10px; box-shadow:var(--sh-md);
+  padding:16px 13px 13px; font-size:12px; line-height:1.6;
+  transform:rotate(var(--rot)) translateY(var(--dy));
+  transition:transform .15s ease, box-shadow .15s ease;
+}
+.card:hover{transform:rotate(0deg) translateY(calc(var(--dy) - 4px)); box-shadow:6px 6px 0 var(--ink)}
+.card:nth-child(odd){--rot:-1.2deg}
+.card:nth-child(even){--rot:1.2deg; --dy:18px}
+@media(max-width:760px){.card{--dy:0px!important}}
+.num{
+  display:inline-block; font-family:var(--chip); font-size:8px;
+  border:var(--bd); border-radius:5px; padding:4px 6px;
+  box-shadow:var(--sh-sm); margin-bottom:10px;
+}
+.card:nth-child(5n+1) .num{background:var(--cyan)}
+.card:nth-child(5n+2) .num{background:var(--violet)}
+.card:nth-child(5n+3) .num{background:var(--amber)}
+.card:nth-child(5n+4) .num{background:var(--coral)}
+.card:nth-child(5n+5) .num{background:var(--lime)}
+
+footer{
+  margin-top:48px; border-top:var(--bd);
+  background:repeating-linear-gradient(-45deg, transparent 0 14px, rgba(17,17,17,.05) 14px 16px), var(--paper);
+  display:flex; align-items:center; justify-content:center; gap:10px;
+  padding:14px 16px; font-family:var(--chip); font-size:7px; letter-spacing:1px;
+}
+
+/* tôn trọng người dùng cần giảm chuyển động */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.001s!important; animation-iteration-count:1!important;
+    transition-duration:.001s!important;
+  }
+}
+</style>
+</head>
+<body>
+
+<div class="ticker" aria-hidden="true">
+  <div class="ticker-track">
+    <span>IRUSVN DOT LAB ++ ANIMATED PROFILE BANNER ++ DOTS IN // LOGO OUT ++ SMIL NATIVE // NO GIF NO JS ++ OPEN SOURCE ++&nbsp;</span>
+    <span>IRUSVN DOT LAB ++ ANIMATED PROFILE BANNER ++ DOTS IN // LOGO OUT ++ SMIL NATIVE // NO GIF NO JS ++ OPEN SOURCE ++&nbsp;</span>
+  </div>
+</div>
+
+<main class="wrap">
+
+  <header class="hero">
+    <span class="stk s1">ANIMATED!</span>
+    <span class="stk s2">SVG + SMIL</span>
+    <div class="tiles" role="heading" aria-level="1" aria-label="IrusVN">
+      <b>I</b><b>R</b><b>U</b><b>S</b><b>V</b><b>N</b><span class="cursor">_</span>
+    </div>
+    <p class="sub">Banner động trên GitHub profile — chân dung dot tan ra rồi tụ thành logo. Chỉnh bằng Dot Editor ngay trên trình duyệt, xuất <code>.npy</code>, sinh lại SVG.</p>
+  </header>
+
+  <section class="tv-card">
+    <input class="chan-r" type="radio" name="chan" id="chDark" checked>
+    <input class="chan-r" type="radio" name="chan" id="chLight">
+
+    <div class="tv-head">
+      <label class="chan" for="chDark">CH·01 DARK</label>
+      <label class="chan" for="chLight">CH·02 LIGHT</label>
+      <span class="onair">ON AIR</span>
+    </div>
+
+    <div class="tv">
+      <div class="tv-screen">
+        <img class="banner im-dark" src="dark.svg" alt="dark.svg — banner động chế độ tối, chân dung dot tan ra rồi tụ thành logo">
+        <img class="banner im-light" src="light.svg" alt="">
+        <div class="crt-fx always"></div>
+      </div>
+      <aside class="tv-side" aria-hidden="true">
+        <span class="knob"></span>
+        <span class="knob k2"></span>
+        <span class="grille"></span>
+        <span class="pled"></span>
+      </aside>
+    </div>
+
+    <div class="row">
+      <a class="btn primary" href="tools/dot-editor/">✏ MỞ DOT EDITOR</a>
+      <a class="btn" href="https://github.com/IrusVN">GITHUB →</a>
+      <span class="note">SVG động thật (SMIL) — xem trực tiếp tại đây, không phải GIF.</span>
+    </div>
+  </section>
+
+  <div class="divider" aria-hidden="true"></div>
+
+  <section>
+    <h2 class="sec-title"><em>//</em> QUY TRÌNH CHỈNH BANNER</h2>
+    <ol class="cards">
+      <li class="card"><span class="num">01</span>Mở <b>Dot Editor</b> → nạp lưới (<code>☁ Từ repo</code> hoặc thả file <code>.npy</code>)</li>
+      <li class="card"><span class="num">02</span)Vẽ / xoá dot, chọn preset <b>Animation</b> và tinh chỉnh tham số</li>
+      <li class="card"><span class="num">03</span><code>⬇ Export .npy</code> → chép đè vào repo root</li>
+      <li class="card"><span class="num">04</span><code>python3 .github/scripts/banner.py --from-npy</code> để sinh lại <code>dark.svg</code> / <code>light.svg</code></li>
+      <li class="card"><span class="num">05</span><b>Commit + push</b> — GitHub tự cập nhật profile</li>
+    </ol>
+  </section>
+
+</main>
+
+<footer>
+  <span class="pled" aria-hidden="true"></span>
+  <span>IRUSVN DOT LAB · MADE OF DOTS · 2026</span>
+</footer>
+
+</body>
+</html>

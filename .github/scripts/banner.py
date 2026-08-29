@@ -3,6 +3,39 @@
 Build the animated profile banner: dark.svg and light.svg.
 
   python3 .github/scripts/banner.py logos/banner.jpeg .
+      recompute the grids from the photo, save portrait_{light,dark}.npy,
+      render the SVGs
+
+  python3 .github/scripts/banner.py --from-npy [-o OUTDIR]
+      render from portrait_{dark,light}.npy already on disk (e.g. exported
+      from tools/dot-editor after hand-editing dots). The .npy files are read
+      only -- they are never overwritten in this mode, which is the whole
+      point: rebuilding from the photo would wipe the hand edits.
+
+Animation config: if banner_config.json exists at the repo root (or is given
+via --config PATH), it overrides the loop-layer behaviour. Keys (all
+optional, unknown keys are reported and ignored):
+
+  anim            drift | ripple | shimmer | static   (default drift)
+  loop_dur        seconds per loop                    (default 13.9)
+  drift_fraction  how far bands travel, 0..0.8        (default 0.42)
+  band_noise      scatter added to band grouping      (default 4.0)
+  n_bands         number of drift/twinkle bands       (default 94)
+  dot_shape       square | circle | diamond | plus    (default square)
+
+--dot-shape SHAPE overrides dot_shape from the config file.
+
+Presets:
+  drift    current behaviour -- bands translate toward the first logo's
+           centroid while fading, then return
+  ripple   bands expand radially OUTWARD from the portrait's ink centroid
+           (the same machinery with a negative fraction against the centre)
+  shimmer  bands never move; each twinkles on its own clock behind the
+           shared fade-out, so the portrait breathes until the logos take over
+  static   the portrait holds completely still; only the shared fade remains
+
+tools/dot-editor has an Animation panel that writes this file. With no
+config file present the output is byte-identical to the pre-config script.
 
 Structure, per the design the two SVGs share:
 
@@ -20,8 +53,10 @@ frame and mishandles additive transforms and textLength, so the checks at the
 bottom of this file measure the point data instead. Look at the result in a
 browser before shipping it.
 """
+import argparse
 import html
-import sys
+import json
+import os
 
 import numpy as np
 
@@ -56,6 +91,43 @@ KEYTIMES = [0.000, 0.194, 0.288, 0.432, 0.525, 0.669, 0.763, 0.906, 1.000]
 
 DRIFT_FRACTION = 0.42
 BAND_NOISE_SIGMA = 4.0
+
+ANIM_PRESETS = ("drift", "ripple", "shimmer", "static")
+
+# Dot shapes. square is the historical look and the default: with it the
+# emitted SVG is byte-identical to pre-shape output (no pattern is written).
+# The others tile a 1x1-cell <pattern>; path data stays run-rectangles either
+# way, so a different shape costs ~200 bytes, not one element per dot.
+DOT_SHAPES = ("square", "circle", "diamond", "plus")
+
+
+def _pattern_tile(shape, color):
+    """SVG body of one 1x1 pattern tile for a shape ('square' never reaches
+    here -- it takes the no-pattern fast path)."""
+    if shape == "circle":
+        # inscribed circle; r=.48 leaves a hairline so neighbours read apart
+        return f'<circle cx=".5" cy=".5" r=".48" fill="{color}"/>'
+    if shape == "diamond":
+        return f'<path d="M.5 0L1 .5L.5 1L0 .5z" fill="{color}"/>'
+    if shape == "plus":
+        # plus arms at half cell width keep single isolated dots visible
+        return (f'<path d="M.375 0h.25v.375H1v.25H.625V1h-.25V.625H0v-.25h.375z" '
+                f'fill="{color}"/>')
+    raise ValueError(shape)
+
+
+def dot_pattern_def(theme, shape):
+    """<defs> entry + paint url for `shape`, or (None, None) for square."""
+    if shape == "square":
+        return None, None
+    tid = f"dots{theme}"
+    return (
+        f'<pattern id="{tid}" width="1" height="1" '
+        f'patternUnits="userSpaceOnUse">'
+        f'{_pattern_tile(shape, THEMES[theme]["dots"])}'
+        f'</pattern>',
+        f'url(#{tid})',
+    )
 
 THEMES = {
     "dark": dict(
@@ -237,13 +309,18 @@ def evenness(groups, runs, shape, cells=4, seed=0):
 
 
 # ---------------------------------------------------------------- loop layer
-def drift_bands(runs, target, n_bands=N_BANDS, sigma=BAND_NOISE_SIGMA, seed=13):
+def drift_bands(runs, target, n_bands=N_BANDS, sigma=BAND_NOISE_SIGMA, seed=13,
+                fraction=None):
     """Group runs into bands that drift together toward `target`.
 
     The trap: drift is a linear function of position, so quantising it into
     bands recreates a square grid and the dissolve looks blocky. Adding
     per-dot noise before grouping breaks the alignment, so band boundaries
     follow no straight line.
+
+    `fraction` overrides DRIFT_FRACTION (banner_config.json). Passing
+    fraction=0 keeps the grouping but freezes every band's translation --
+    that is how the shimmer preset reuses this machinery.
     """
     rng = np.random.default_rng(seed)
     pts = np.array([(x + n / 2.0, y) for x, y, n in runs], dtype=np.float64)
@@ -254,13 +331,14 @@ def drift_bands(runs, target, n_bands=N_BANDS, sigma=BAND_NOISE_SIGMA, seed=13):
 
     order = np.argsort(d)
     bands = []
+    frac = DRIFT_FRACTION if fraction is None else fraction
     for chunk in np.array_split(order, n_bands):
         if len(chunk) == 0:
             continue
         sel = [runs[i] for i in chunk]
         c = pts[chunk].mean(axis=0)
-        dx = (tx - c[0]) * DRIFT_FRACTION
-        dy = (ty - c[1]) * DRIFT_FRACTION
+        dx = (tx - c[0]) * frac
+        dy = (ty - c[1]) * frac
         bands.append((sel, (dx, dy)))
     return bands
 
@@ -486,7 +564,33 @@ def info_panel(t):
 
 
 # ---------------------------------------------------------------- chrome
-def chrome(t):
+def _traveller_body(shape, color):
+    """Geometry of one travelling dot, ~2.4x1.7 cells, origin top-left."""
+    if shape == "circle":
+        return f'<ellipse rx="1.2" ry=".85" fill="{color}"/>'
+    if shape == "diamond":
+        return f'<path d="M1.2 0L2.4 .85L1.2 1.7L0 .85z" fill="{color}"/>'
+    if shape == "plus":
+        # scale the 1x1-cell plus up to the traveller footprint
+        return f'<g transform="scale(2.4,1.7)">{_pattern_tile("plus", color)}</g>'
+    raise ValueError(shape)
+
+
+def traveller_defs(shape):
+    """Defs entries for the 900 morphing dots; square = historical rects."""
+    if shape == "square":
+        return ('<rect id="tvdark" width="2.4" height="1.7" fill="#A78BFA"/>',
+                '<rect id="tvlight" width="2.4" height="1.7" fill="#7C3AED"/>')
+    return tuple(
+        f'<g id="tv{theme}">'
+        f'{_traveller_body(shape, THEMES[theme]["dots"])}</g>'
+        for theme in ("dark", "light")
+    )
+
+
+def chrome(t, theme, shape="square", pat_def=None):
+    a1, a2, a3 = t["accent"]
+    g1, g2, g3 = t["ascii_grad"]
     a1, a2, a3 = t["accent"]
     g1, g2, g3 = t["ascii_grad"]
     s = []
@@ -495,6 +599,8 @@ def chrome(t):
       f'viewBox="0 0 {W} {H}" font-family="{FONT}" role="img" '
       f'aria-label="{esc(SUBJECT)} — profile.sh --live">')
     a('<defs>')
+    if pat_def:
+        a(pat_def)
     a('<linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">')
     for off, c, seq in ((0, a1, (a1, a2, a3, a1)),
                         (0.5, a2, (a2, a3, a1, a2)),
@@ -524,8 +630,8 @@ def chrome(t):
     a('<clipPath id="winClip">'
       '<rect x="2" y="2" width="1176" height="606" rx="18"/></clipPath>')
     # Traveller dot definitions for both themes
-    a('<rect id="tvdark" width="2.4" height="1.7" fill="#A78BFA"/>')
-    a('<rect id="tvlight" width="2.4" height="1.7" fill="#7C3AED"/>')
+    for d_ in traveller_defs(shape):
+        a(d_)
     a('</defs>')
 
     a(f'<rect x="2" y="2" width="1176" height="606" rx="18" '
@@ -570,17 +676,105 @@ def kt():
     return ";".join(f"{v:.3f}" for v in KEYTIMES)
 
 
-def build(ink, theme):
-    """Assemble one themed SVG from a 300x340 ink grid."""
+# ---------------------------------------------------------------- config
+CONFIG_NAME = "banner_config.json"
+
+
+def load_config(path=None):
+    """Read banner_config.json (repo root unless --config gives a path).
+
+    Returns (cfg dict, path-or-None). Missing file -> ({}, None): the output
+    must stay byte-identical to the pre-config script. Unknown keys and bad
+    types are reported loudly instead of being silently dropped.
+    """
+    p = path or os.path.join(ROOT, CONFIG_NAME)
+    if not os.path.exists(p):
+        return {}, None
+    with open(p, encoding="utf-8") as f:
+        raw = json.load(f)
+    if not isinstance(raw, dict):
+        raise SystemExit(f"{p}: expected a JSON object at the top level")
+    known = {"anim", "loop_dur", "drift_fraction", "band_noise", "n_bands",
+             "dot_shape"}
+    for k in sorted(set(raw) - known):
+        print(f"config warning: unknown key {k!r} ignored")
+    cfg = {}
+    if "dot_shape" in raw:
+        v = str(raw["dot_shape"]).lower()
+        if v not in DOT_SHAPES:
+            raise SystemExit(f"{p}: dot_shape must be one of "
+                             f"{'/'.join(DOT_SHAPES)}, got {raw['dot_shape']!r}")
+        cfg["dot_shape"] = v
+    if "anim" in raw:
+        v = str(raw["anim"]).lower()
+        if v not in ANIM_PRESETS:
+            raise SystemExit(f"{p}: anim must be one of "
+                             f"{'/'.join(ANIM_PRESETS)}, got {raw['anim']!r}")
+        cfg["anim"] = v
+    for k, lo, hi in (("loop_dur", 4.0, 60.0),
+                      ("drift_fraction", 0.0, 0.8),
+                      ("band_noise", 0.0, 40.0)):
+        if k in raw:
+            try:
+                v = float(raw[k])
+            except (TypeError, ValueError):
+                raise SystemExit(f"{p}: {k} must be a number")
+            if not lo <= v <= hi:
+                raise SystemExit(f"{p}: {k}={v} out of range [{lo}, {hi}]")
+            cfg[k] = v
+    if "n_bands" in raw:
+        try:
+            n = int(raw["n_bands"])
+        except (TypeError, ValueError):
+            raise SystemExit(f"{p}: n_bands must be an integer")
+        if not 10 <= n <= 400:
+            raise SystemExit(f"{p}: n_bands={n} out of range [10, 400]")
+        cfg["n_bands"] = n
+    return cfg, p
+
+
+class AnimParams:
+    """Resolved animation settings for one build() call.
+
+    drift_fraction/band_noise/n_bands apply to every preset (shimmer still
+    needs band grouping; ripple uses its own fraction); loop_dur always does.
+    """
+
+    def __init__(self, cfg):
+        self.anim = cfg.get("anim", "drift")
+        self.loop_dur = cfg.get("loop_dur", LOOP_DUR)
+        self.drift_fraction = cfg.get("drift_fraction", DRIFT_FRACTION)
+        self.band_noise = cfg.get("band_noise", BAND_NOISE_SIGMA)
+        self.n_bands = cfg.get("n_bands", N_BANDS)
+        self.dot_shape = cfg.get("dot_shape", "square")
+
+
+def build(ink, theme, anim=None):
+    """Assemble one themed SVG from a 300x340 ink grid.
+
+    `anim` is an AnimParams; None means defaults, which reproduce the exact
+    pre-config output.
+    """
+    ap = anim or AnimParams({})
     t = THEMES[theme]
     runs = runs_from_mask(ink)
+    shape = getattr(ap, "dot_shape", "square")
+    pat_def, paint = dot_pattern_def(theme, shape)
+
+    # square keeps the historical fill + crispEdges rendering exactly; the
+    # pattern shapes drop crispEdges because anti-aliased curves are the point
+    chrome_svg = chrome(t, theme, shape, pat_def)
+    if pat_def:
+        open_layer = (f'<g transform="translate({DOT_X},{DOT_Y}) '
+                      f'scale({SCALE_X:.4f},{SCALE_Y:.4f})" fill="{paint}">')
+    else:
+        open_layer = (f'<g transform="translate({DOT_X},{DOT_Y}) '
+                      f'scale({SCALE_X:.4f},{SCALE_Y:.4f})" fill="{t["dots"]}" '
+                      f'shape-rendering="crispEdges">')
+
     s = []
     a = s.append
-    a(chrome(t))
-
-    open_layer = (f'<g transform="translate({DOT_X},{DOT_Y}) '
-                  f'scale({SCALE_X:.4f},{SCALE_Y:.4f})" fill="{t["dots"]}" '
-                  f'shape-rendering="crispEdges">')
+    a(chrome_svg)
 
     # ---- intro: 60 interleaved random groups, then hand off to the loop
     groups = intro_groups(runs)
@@ -594,27 +788,70 @@ def build(ink, theme):
           f'<path d="{path_d(g)}"/></g>')
     a('</g>')
 
-    # ---- loop: duplicate portrait, drift bands
+    # ---- loop layer: duplicate portrait partitioned into bands. All presets
+    # share this structure -- they differ only in each band's translate values
+    # and whether the per-band twinkle animate element is emitted.
     logo_box = (int(GRID_W * 0.16), int(GRID_H * 0.16),
                 int(GRID_W * 0.68), int(GRID_H * 0.62))
     clouds = logo_clouds(N_TRAVELLERS, logo_box)
+
+    ink_pts = np.array([(x + n / 2.0, y) for x, y, n in runs],
+                       dtype=np.float64)
+    ink_centroid = (float(ink_pts[:, 0].mean()), float(ink_pts[:, 1].mean()))
     first_centroid = (float(clouds[0][:, 0].mean()), float(clouds[0][:, 1].mean()))
-    bands = drift_bands(runs, first_centroid)
+
+    if ap.anim == "ripple":
+        # outward from the portrait's own centroid: negative fraction against
+        # that centre makes every band travel away from it while fading
+        target = ink_centroid
+        frac = -abs(ap.drift_fraction)
+    elif ap.anim == "drift":
+        target = first_centroid
+        frac = ap.drift_fraction
+    else:
+        # shimmer / static keep the grouping but never translate
+        target = first_centroid
+        frac = 0.0
+
+    bands = drift_bands(runs, target, n_bands=ap.n_bands,
+                        sigma=ap.band_noise, fraction=frac)
+
+    twinkle = ap.anim == "shimmer"
 
     a(open_layer[:-1] + ' opacity="0">')
     a(f'<set attributeName="opacity" to="1" begin="{INTRO_END}s"/>')
-    for sel, (dx, dy) in bands:
-        pos = f"0 0;0 0;{dx:.0f} {dy:.0f}"
-        vals = ";".join([pos.split(";")[0], pos.split(";")[1]]
-                        + [f"{dx:.0f} {dy:.0f}"] * 5 + ["0 0"])
+    for bi, (sel, (dx, dy)) in enumerate(bands):
+        # The shared fade lives on the outer <g>; a per-band twinkle must sit
+        # on a nested one. Two <animate> elements on the same attribute
+        # compose as a sandwich where the later-begun one wins -- with both
+        # repeating indefinitely the twinkle would override the fade forever
+        # and the handoff to the logos would break. Nested opacities multiply,
+        # so the fade still lands.
+        body = f'<path d="{path_d(sel)}"/>'
+        if twinkle:
+            # staggered clocks so bands breathe out of sync
+            lo = 0.55 + 0.15 * ((bi * 7) % 3)
+            phase = (bi % 8) / 8.0
+            body = (f'<g><animate attributeName="opacity" '
+                    f'values="1;{lo};1" '
+                    f'dur="{(2.6 + (bi % 5) * 0.7):.1f}s" '
+                    f'begin="{INTRO_END + phase:.2f}s" '
+                    f'repeatCount="indefinite"/>{body}</g>')
+        tr = ""
+        if (dx, dy) != (0, 0):
+            pos = f"0 0;0 0;{dx:.0f} {dy:.0f}"
+            vals = ";".join([pos.split(";")[0], pos.split(";")[1]]
+                            + [f"{dx:.0f} {dy:.0f}"] * 5 + ["0 0"])
+            tr = (f'<animateTransform attributeName="transform" '
+                  f'type="translate" values="{vals}" keyTimes="{kt()}" '
+                  f'dur="{ap.loop_dur}s" begin="{INTRO_END}s" '
+                  f'repeatCount="indefinite"/>')
         a(f'<g opacity="1">'
           f'<animate attributeName="opacity" values="1;1;0;0;0;0;0;0;1" '
-          f'keyTimes="{kt()}" dur="{LOOP_DUR}s" begin="{INTRO_END}s" '
+          f'keyTimes="{kt()}" dur="{ap.loop_dur}s" begin="{INTRO_END}s" '
           f'repeatCount="indefinite"/>'
-          f'<animateTransform attributeName="transform" type="translate" '
-          f'values="{vals}" keyTimes="{kt()}" dur="{LOOP_DUR}s" '
-          f'begin="{INTRO_END}s" repeatCount="indefinite"/>'
-          f'<path d="{path_d(sel)}"/></g>')
+          + tr +
+          f'{body}</g>')
     a('</g>')
 
     # ---- travellers: 900 dots morphing between the logos
@@ -631,10 +868,10 @@ def build(ink, theme):
         # the fine dither
         a(f'<use href="#{tid}" opacity="0">'
           f'<animate attributeName="opacity" values="0;0;1;1;1;1;1;1;0" '
-          f'keyTimes="{kt()}" dur="{LOOP_DUR}s" begin="{INTRO_END}s" '
+          f'keyTimes="{kt()}" dur="{ap.loop_dur}s" begin="{INTRO_END}s" '
           f'repeatCount="indefinite"/>'
           f'<animateTransform attributeName="transform" type="translate" '
-          f'values="{vals}" keyTimes="{kt()}" dur="{LOOP_DUR}s" '
+          f'values="{vals}" keyTimes="{kt()}" dur="{ap.loop_dur}s" '
           f'begin="{INTRO_END}s" repeatCount="indefinite"/></use>')
     a('</g>')
 
@@ -657,16 +894,108 @@ def build(ink, theme):
     return "\n".join(s), stats
 
 
-def main():
-    src = sys.argv[1] if len(sys.argv) > 1 else "logos/banner.jpeg"
-    outdir = sys.argv[2] if len(sys.argv) > 2 else "."
-    light, dark, box = build_grids(src)
-    np.save("portrait_light.npy", light)
-    np.save("portrait_dark.npy", dark)
-    print(f"crop (x,y,w,h) = {box}   grid {GRID_W}x{GRID_H}")
+def _load_npy_grid(path):
+    """Read one bool grid saved by portrait.build_grids or the dot editor.
 
-    for ink, theme in ((dark, "dark"), (light, "light")):
-        svg, st = build(ink, theme)
+    The editor exports the same |b1 layout numpy does, but a stray file from
+    elsewhere must not silently render wrong -- so shape and dtype are checked
+    against the pipeline's constants instead of trusted.
+    """
+    g = np.load(path)
+    if g.dtype != np.bool_:
+        raise SystemExit(f"{path}: expected bool grid, got {g.dtype}")
+    if g.shape != (GRID_H, GRID_W):
+        raise SystemExit(f"{path}: expected shape ({GRID_H}, {GRID_W}), got {g.shape}")
+    return g
+
+
+# portrait_dark.npy / portrait_light.npy live at the repo root (this file sits
+# in <root>/.github/scripts). Pinning them there instead of the CWD matters:
+# the old code saved wherever you happened to run from, which is how a stale
+# second pair ended up inside .github/scripts.
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        description="Build the animated profile banner SVGs.")
+    ap.add_argument("src", nargs="?", default=None,
+                    help="photo to recompute grids from; omit with "
+                         "--from-npy (default: logos/banner-cutout.png if "
+                         "present, else logos/banner.jpeg)")
+    ap.add_argument("outdir", nargs="?", default=None,
+                    help="where to write dark.svg / light.svg (default .)")
+    ap.add_argument("--from-npy", action="store_true",
+                    help="render from <root>/portrait_dark.npy / "
+                         "portrait_light.npy already on disk; never "
+                         "overwrites them (use after editing in "
+                         "tools/dot-editor)")
+    ap.add_argument("-o", "--outdir", dest="outdir_opt",
+                    help="output directory (same as positional outdir)")
+    ap.add_argument("--config", default=None,
+                    help="path to banner_config.json (default: "
+                         "<repo-root>/banner_config.json if present)")
+    ap.add_argument("--anim", choices=ANIM_PRESETS,
+                    help="animation preset; overrides banner_config.json")
+    ap.add_argument("--dot-shape", choices=DOT_SHAPES,
+                    help="dot shape for portrait + travellers; overrides "
+                         "banner_config.json")
+    args = ap.parse_args()
+
+    # --from-npy takes no input file, so a lone positional after it is really
+    # an output dir ("banner.py --from-npy build" must not land in the photo
+    # slot and silently write to ".")
+    outdir = args.outdir_opt or args.outdir or (
+        args.src if args.from_npy else None) or "."
+
+    cfg, cfg_path = load_config(args.config)
+    if args.anim:
+        cfg["anim"] = args.anim
+        print(f"anim: {cfg['anim']} (from --anim flag)")
+    if args.dot_shape:
+        cfg["dot_shape"] = args.dot_shape
+        print(f"dot_shape: {args.dot_shape} (from --dot-shape flag)")
+
+    if args.from_npy:
+        grids = {}
+        for theme in ("dark", "light"):
+            p = os.path.join(ROOT, f"portrait_{theme}.npy")
+            if not os.path.exists(p):
+                raise SystemExit(
+                    f"--from-npy: missing {p} (run without --from-npy once, "
+                    f"or export from tools/dot-editor)")
+            grids[theme] = _load_npy_grid(p)
+            print(f"from-npy: loaded {p}")
+    else:
+        src = args.src
+        if src is None:
+            # banner-cutout.png (alpha-masked photo) is what the committed
+            # grids were built from; banner.jpeg needs the background
+            # segmentation pass and yields a different portrait
+            cutout = os.path.join(ROOT, "logos", "banner-cutout.png")
+            plain = os.path.join(ROOT, "logos", "banner.jpeg")
+            src = cutout if os.path.exists(cutout) else plain
+        light, dark, box = build_grids(src)
+        # these saves are the point of this mode: the .npy pair at the repo
+        # root is the source of truth the dot editor reads, so it must always
+        # mirror the photo
+        np.save(os.path.join(ROOT, "portrait_light.npy"), light)
+        np.save(os.path.join(ROOT, "portrait_dark.npy"), dark)
+        print(f"crop (x,y,w,h) = {box}   grid {GRID_W}x{GRID_H}")
+        grids = {"dark": dark, "light": light}
+
+    anim = AnimParams(cfg)
+    if cfg:
+        print(f"config: {cfg_path} -> anim={anim.anim} "
+              f"loop_dur={anim.loop_dur}s drift={anim.drift_fraction} "
+              f"noise={anim.band_noise} bands={anim.n_bands}")
+    else:
+        print("anim: drift (defaults — no banner_config.json)")
+    if anim.dot_shape != "square":
+        print(f"dot_shape: {anim.dot_shape}")
+
+    for theme, ink in grids.items():
+        svg, st = build(ink, theme, anim=anim)
         path = f"{outdir}/{theme}.svg"
         with open(path, "w", encoding="utf-8") as f:
             f.write(svg)

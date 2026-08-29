@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dot-editor",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8642"],
+      "port": 8642
+    },
+    {
+      "name": "landing-dist",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8643", "--directory", "/tmp/claude-501/irusvn-dist"],
+      "port": 8643
+    }
+  ]
+}
